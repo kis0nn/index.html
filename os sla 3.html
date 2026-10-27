@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS SLA Simulator: LRU, Optimal & Adaptive LPR</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h2 { text-align: center; color: #1e293b; margin-top: 0; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 20px; }
+        .control-panel { display: flex; gap: 15px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; }
+        .input-group { display: flex; flex-direction: column; flex: 1; min-width: 180px; }
+        .input-group label { font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #475569; }
+        .input-group input, .input-group select { padding: 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+        .btn-run { background: #2563eb; color: white; border: none; padding: 10px 22px; border-radius: 6px; font-weight: 600; cursor: pointer; height: 38px; transition: background 0.2s; }
+        .btn-run:hover { background: #1d4ed8; }
+        .presets { margin-bottom: 20px; font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .preset-btn { background: #e2e8f0; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; color: #334155; }
+        .preset-btn:hover { background: #cbd5e1; }
+        .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .card { background: #fff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .card h3 { margin: 0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .card p { margin: 8px 0 0; font-size: 26px; font-weight: 700; color: #0f172a; }
+        .comp-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 25px; }
+        .comp-box h4 { margin: 0 0 10px 0; color: #1e293b; font-size: 15px; }
+        .comp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center; font-size: 14px; }
+        .comp-item { background: white; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; }
+        table { width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; }
+        th, td { padding: 10px; border: 1px solid #e2e8f0; }
+        th { background-color: #1e293b; color: white; font-weight: 600; }
+        .hit { background-color: #dcfce7; color: #166534; font-weight: 600; }
+        .fault { background-color: #fee2e2; color: #991b1b; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>OS Page Replacement Simulator</h2>
+    <div class="subtitle">Comparative Analysis: Traditional (LRU & Optimal) vs. Research Paper (Adaptive LPR)</div>
+
+    <div class="presets">
+        <span><strong>Load Test Scenario:</strong></span>
+        <button class="preset-btn" onclick="loadPreset('7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1', 3)">Scenario 1: Locality Workload</button>
+        <button class="preset-btn" onclick="loadPreset('1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4', 3)">Scenario 2: Cyclic Scan (LRU Fails)</button>
+        <button class="preset-btn" onclick="loadPreset('4, 7, 6, 1, 7, 6, 1, 2, 7, 2, 2, 1, 4, 6', 3)">Scenario 3: Mixed DB Query</button>
+    </div>
+
+    <div class="control-panel">
+        <div class="input-group" style="flex: 2;">
+            <label>Reference String (comma-separated)</label>
+            <input type="text" id="refString" value="7, 0, 1, 2, 0, 3, 0, 4, 2, 3, 0, 3, 2, 1, 2, 0, 1, 7, 0, 1">
+        </div>
+        <div class="input-group" style="max-width: 120px;">
+            <label>Memory Frames</label>
+            <input type="number" id="frameCount" value="3" min="1" max="8">
+        </div>
+        <div class="input-group">
+            <label>Active Algorithm View</label>
+            <select id="algoSelect" onchange="runSimulation()">
+                <option value="LRU">Least Recently Used (LRU)</option>
+                <option value="OPT">Optimal Page Replacement (OPT)</option>
+                <option value="LPR">Adaptive LPR (Research Paper Hybrid)</option>
+            </select>
+        </div>
+        <button class="btn-run" onclick="runSimulation()">Run Simulation</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="card"><h3>Total Requests</h3><p id="totalReq">0</p></div>
+        <div class="card"><h3>Page Faults</h3><p id="totalFaults">0</p></div>
+        <div class="card"><h3>Page Hits</h3><p id="totalHits">0</p></div>
+        <div class="card"><h3>Hit Ratio</h3><p id="hitRatio">0%</p></div>
+    </div>
+
+    <div class="comp-box">
+        <h4>Cross-Algorithm Benchmark (Same Reference String & Frames)</h4>
+        <div class="comp-grid" id="compSummary"></div>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table id="simTable">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function parsePages() {
+    return document.getElementById('refString').value
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s !== '')
+        .map(Number);
+}
+
+function simulateLRU(pages, capacity) {
+    let frames = Array(capacity).fill(null);
+    let lastUsed = new Map();
+    let steps = [], faults = 0, hits = 0;
+
+    pages.forEach((page, idx) => {
+        let isHit = frames.includes(page);
+        let note = '';
+        if (isHit) {
+            hits++;
+            note = '🟢 Page Hit';
+        } else {
+            faults++;
+            let emptyIdx = frames.indexOf(null);
+            if (emptyIdx !== -1) {
+                frames[emptyIdx] = page;
+                note = '🛑 Page Fault (Loaded)';
+            } else {
+                let lruPage = frames[0], minTime = Infinity;
+                frames.forEach(f => {
+                    let t = lastUsed.has(f) ? lastUsed.get(f) : -1;
+                    if (t < minTime) { minTime = t; lruPage = f; }
+                });
+                let evictIdx = frames.indexOf(lruPage);
+                frames[evictIdx] = page;
+                note = `🛑 Page Fault (Evicts ${lruPage})`;
+            }
+        }
+        lastUsed.set(page, idx);
+        steps.push({ step: idx + 1, page, frames: [...frames], isHit, note });
+    });
+    return { steps, faults, hits };
+}
+
+function simulateOPT(pages, capacity) {
+    let frames = Array(capacity).fill(null);
+    let steps = [], faults = 0, hits = 0;
+
+    pages.forEach((page, idx) => {
+        let isHit = frames.includes(page);
+        let note = '';
+        if (isHit) {
+            hits++;
+            note = '🟢 Page Hit';
+        } else {
+            faults++;
+            let emptyIdx = frames.indexOf(null);
+            if (emptyIdx !== -1) {
+                frames[emptyIdx] = page;
+                note = '🛑 Page Fault (Loaded)';
+            } else {
+                let future = pages.slice(idx + 1);
+                let victim = frames[0], farthest = -1;
+                frames.forEach(f => {
+                    let nextUse = future.indexOf(f);
+                    if (nextUse === -1) { nextUse = Infinity; }
+                    if (nextUse > farthest) { farthest = nextUse; victim = f; }
+                });
+                let evictIdx = frames.indexOf(victim);
+                frames[evictIdx] = page;
+                note = `🛑 Page Fault (Evicts ${victim})`;
+            }
+        }
+        steps.push({ step: idx + 1, page, frames: [...frames], isHit, note });
+    });
+    return { steps, faults, hits };
+}
+
+function simulateLPR(pages, capacity) {
+    let frames = Array(capacity).fill(null);
+    let lastUsed = new Map();
+    let shadowLRU = [];
+    let wLRU = 0.5, wMRU = 0.5;
+    let steps = [], faults = 0, hits = 0;
+
+    pages.forEach((page, idx) => {
+        let isHit = frames.includes(page);
+        let note = '';
+        if (isHit) {
+            hits++;
+            wLRU = Math.min(0.9, wLRU + 0.05);
+            wMRU = 1 - wLRU;
+            note = '🟢 Page Hit';
+        } else {
+            faults++;
+            if (shadowLRU.includes(page)) {
+                wMRU = Math.min(0.9, wMRU + 0.25);
+                wLRU = 1 - wMRU;
+            }
+            let emptyIdx = frames.indexOf(null);
+            if (emptyIdx !== -1) {
+                frames[emptyIdx] = page;
+                note = '🛑 Page Fault (Loaded)';
+            } else {
+                let victim = frames[0];
+                let policyUsed = wLRU >= wMRU ? 'LRU' : 'MRU';
+                if (policyUsed === 'LRU') {
+                    let minTime = Infinity;
+                    frames.forEach(f => {
+                        let t = lastUsed.get(f) ?? -1;
+                        if (t < minTime) { minTime = t; victim = f; }
+                    });
+                } else {
+                    let maxTime = -1;
+                    frames.forEach(f => {
+                        let t = lastUsed.get(f) ?? -1;
+                        if (t > maxTime) { maxTime = t; victim = f; }
+                    });
+                }
+                shadowLRU.push(victim);
+                if (shadowLRU.length > capacity) shadowLRU.shift();
+                frames[frames.indexOf(victim)] = page;
+                note = `🛑 Fault [${policyUsed} mode] (Evicts ${victim})`;
+            }
+        }
+        lastUsed.set(page, idx);
+        steps.push({ step: idx + 1, page, frames: [...frames], isHit, note });
+    });
+    return { steps, faults, hits };
+}
+
+function loadPreset(str, frames) {
+    document.getElementById('refString').value = str;
+    document.getElementById('frameCount').value = frames;
+    runSimulation();
+}
+
+function runSimulation() {
+    const pages = parsePages();
+    const capacity = parseInt(document.getElementById('frameCount').value) || 3;
+    const selected = document.getElementById('algoSelect').value;
+
+    const resLRU = simulateLRU(pages, capacity);
+    const resOPT = simulateOPT(pages, capacity);
+    const resLPR = simulateLPR(pages, capacity);
+
+    const active = selected === 'LRU' ? resLRU : (selected === 'OPT' ? resOPT : resLPR);
+
+    document.getElementById('totalReq').innerText = pages.length;
+    document.getElementById('totalFaults').innerText = active.faults;
+    document.getElementById('totalHits').innerText = active.hits;
+    const ratio = pages.length ? ((active.hits / pages.length) * 100).toFixed(1) : 0;
+    document.getElementById('hitRatio').innerText = ratio + '%';
+
+    document.getElementById('compSummary').innerHTML = `
+        <div class="comp-item"><strong>Traditional LRU</strong><br>Faults: ${resLRU.faults} | Hit Ratio: ${((resLRU.hits/pages.length)*100).toFixed(1)}%</div>
+        <div class="comp-item"><strong>Research Adaptive LPR</strong><br>Faults: ${resLPR.faults} | Hit Ratio: ${((resLPR.hits/pages.length)*100).toFixed(1)}%</div>
+        <div class="comp-item"><strong>Optimal (OPT Benchmark)</strong><br>Faults: ${resOPT.faults} | Hit Ratio: ${((resOPT.hits/pages.length)*100).toFixed(1)}%</div>
+    `;
+
+    let headHTML = `<tr><th>Step</th><th>Requested Page</th>`;
+    for (let i = 1; i <= capacity; i++) headHTML += `<th>Frame ${i}</th>`;
+    headHTML += `<th>Event Status</th></tr>`;
+    document.getElementById('tableHead').innerHTML = headHTML;
+
+    let bodyHTML = '';
+    active.steps.forEach(s => {
+        bodyHTML += `<tr><td>Step ${s.step}</td><td><strong>${s.page}</strong></td>`;
+        s.frames.forEach(f => bodyHTML += `<td>${f !== null ? f : '-'}</td>`);
+        bodyHTML += `<td class="${s.isHit ? 'hit' : 'fault'}">${s.note}</td></tr>`;
+    });
+    document.getElementById('tableBody').innerHTML = bodyHTML;
+}
+
+window.onload = runSimulation;
+</script>
+</body>
+</html>
