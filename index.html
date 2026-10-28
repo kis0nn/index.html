@@ -92,7 +92,8 @@ function parsePages() {
         .split(',')
         .map(s => s.trim())
         .filter(s => s !== '')
-        .map(Number);
+        .map(Number)
+        .filter(n => !Number.isNaN(n));
 }
 
 function simulateLRU(pages, capacity) {
@@ -180,9 +181,18 @@ function simulateLPR(pages, capacity) {
             note = '🟢 Page Hit';
         } else {
             faults++;
-            if (shadowLRU.includes(page)) {
-                wMRU = Math.min(0.9, wMRU + 0.25);
-                wLRU = 1 - wMRU;
+            // Regret step: was this page recently evicted by one of our policies?
+            const shadowIdx = shadowLRU.findIndex(e => e.page === page);
+            if (shadowIdx !== -1) {
+                const evictedBy = shadowLRU[shadowIdx].policy;
+                shadowLRU.splice(shadowIdx, 1);
+                if (evictedBy === 'LRU') {          // LRU made a mistake -> trust MRU more
+                    wMRU = Math.min(0.9, wMRU + 0.25);
+                    wLRU = 1 - wMRU;
+                } else {                            // MRU made a mistake -> trust LRU more
+                    wLRU = Math.min(0.9, wLRU + 0.25);
+                    wMRU = 1 - wLRU;
+                }
             }
             let emptyIdx = frames.indexOf(null);
             if (emptyIdx !== -1) {
@@ -204,7 +214,7 @@ function simulateLPR(pages, capacity) {
                         if (t > maxTime) { maxTime = t; victim = f; }
                     });
                 }
-                shadowLRU.push(victim);
+                shadowLRU.push({ page: victim, policy: policyUsed });
                 if (shadowLRU.length > capacity) shadowLRU.shift();
                 frames[frames.indexOf(victim)] = page;
                 note = `🛑 Fault [${policyUsed} mode] (Evicts ${victim})`;
